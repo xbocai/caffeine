@@ -267,7 +267,7 @@ public final class CaffeineTest {
 
   @Test(expectedExceptions = NullPointerException.class)
   public void weigher_null() {
-    Caffeine.newBuilder().weigher(null);
+    Caffeine.newBuilder().weighenar(null);
   }
 
   @Test(expectedExceptions = IllegalStateException.class)

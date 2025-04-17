@@ -113,11 +113,11 @@ final class FrequencySketch<E> {
     }
 
     int hash = spread(e.hashCode());
-    int start = (hash & 3) << 2;
+    int start = (hash & 3) << 2; //取最后两位，并左移2位
     int frequency = Integer.MAX_VALUE;
-    for (int i = 0; i < 4; i++) {
-      int index = indexOf(hash, i);
-      int count = (int) ((table[index] >>> ((start + i) << 2)) & 0xfL);
+    for (int i = 0; i < 4; i++) { //分别计算hash找到对应的long，并在该long对应的4字节上读取数据
+      int index = indexOf(hash, i); //找到对应的long
+      int count = (int) ((table[index] >>> ((start + i) << 2)) & 0xfL); //在对应的long的对应4自己上读取数据
       frequency = Math.min(frequency, count);
     }
     return frequency;
@@ -135,19 +135,19 @@ final class FrequencySketch<E> {
       return;
     }
 
-    int hash = spread(e.hashCode());
-    int start = (hash & 3) << 2;
+    int hash = spread(e.hashCode()); //计算Hash
+    int start = (hash & 3) << 2; //映射到long的16个槽位上。末尾两位为0，后面用来放不同的hash
 
     // Loop unrolling improves throughput by 5m ops/s
-    int index0 = indexOf(hash, 0);
-    int index1 = indexOf(hash, 1);
-    int index2 = indexOf(hash, 2);
-    int index3 = indexOf(hash, 3);
+    int index0 = indexOf(hash, 0);//计算hash0映射的位置
+    int index1 = indexOf(hash, 1);//计算hash1映射的位置
+    int index2 = indexOf(hash, 2);//计算hash2映射的位置
+    int index3 = indexOf(hash, 3);//计算hash3映射的位置
 
-    boolean added = incrementAt(index0, start);
-    added |= incrementAt(index1, start + 1);
-    added |= incrementAt(index2, start + 2);
-    added |= incrementAt(index3, start + 3);
+    boolean added = incrementAt(index0, start); //hash0，放到long的第1个4字节
+    added |= incrementAt(index1, start + 1); //hash1，放到long的第2个4字节
+    added |= incrementAt(index2, start + 2); //hash2，放到long的第3个4字节
+    added |= incrementAt(index3, start + 3); //hash3，放到long的第4个4字节
 
     if (added && (++size == sampleSize)) {
       reset();
@@ -157,28 +157,29 @@ final class FrequencySketch<E> {
   /**
    * Increments the specified counter by 1 if it is not already at the maximum value (15).
    *
-   * @param i the table index (16 counters)
-   * @param j the counter to increment
+   * @param i the table index (16 counters) //放到table的哪个long上
+   * @param j the counter to increment //放到对应long的第几个4字节上
    * @return if incremented
    */
   boolean incrementAt(int i, int j) {
-    int offset = j << 2;
-    long mask = (0xfL << offset);
-    if ((table[i] & mask) != mask) {
-      table[i] += (1L << offset);
+    int offset = j << 2; //*4找到long中对应4字节的起始位置
+    long mask = (0xfL << offset); //将15（1111）移动到对应4字节的位置形成mask
+    if ((table[i] & mask) != mask) { //如果该4字节的数据值为最大值15了，则不继续加
+      table[i] += (1L << offset); //将1移动到该4字节的其实位置，并加上原来的数据，实现该4字节数据加1的操作
       return true;
     }
     return false;
   }
 
   /** Reduces every counter by half of its original value. */
+  //TinyLFU论文的3.3有数学证明
   void reset() {
     int count = 0;
     for (int i = 0; i < table.length; i++) {
-      count += Long.bitCount(table[i] & ONE_MASK);
-      table[i] = (table[i] >>> 1) & RESET_MASK;
+      count += Long.bitCount(table[i] & ONE_MASK); //统计每个4字节最低位为1的数量
+      table[i] = (table[i] >>> 1) & RESET_MASK;  //将每个4字节的数据除以2
     }
-    size = (size >>> 1) - (count >>> 2);
+    size = (size >>> 1) - (count >>> 2); //大致思想是将size除以2，并减去4字节低位1的数量/4
   }
 
   /**

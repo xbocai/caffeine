@@ -69,7 +69,7 @@ final class TimerWheel<K, V> {
       Long.numberOfTrailingZeros(SPANS[2]),
       Long.numberOfTrailingZeros(SPANS[3]),
       Long.numberOfTrailingZeros(SPANS[4]),
-  };
+      };
 
   final BoundedLocalCache<K, V> cache;
   final Node<K, V>[][] wheel;
@@ -98,12 +98,14 @@ final class TimerWheel<K, V> {
     long previousTimeNanos = nanos;
     try {
       nanos = currentTimeNanos;
+      //循环处理，处理所有时间跨度小于时间间隔的Wheel层
       for (int i = 0; i < SHIFT.length; i++) {
         long previousTicks = (previousTimeNanos >>> SHIFT[i]);
         long currentTicks = (currentTimeNanos >>> SHIFT[i]);
-        if ((currentTicks - previousTicks) <= 0L) {
+        if ((currentTicks - previousTicks) <= 0L) { //Wheel时间跨度大于产生的时间间隔
           break;
         }
+        //所有时间跨度小的Wheel都要处理
         expire(i, previousTicks, currentTicks);
       }
     } catch (Throwable t) {
@@ -123,31 +125,36 @@ final class TimerWheel<K, V> {
     Node<K, V>[] timerWheel = wheel[index];
 
     int start, end;
+    //每个slot都需要处理
     if ((currentTicks - previousTicks) >= timerWheel.length) {
       end = timerWheel.length;
       start = 0;
-    } else {
+    } else { //只处理部分slot
       long mask = SPANS[index] - 1;
-      start = (int) (previousTicks & mask);
+      start = (int) (previousTicks & mask); //取得对应的slot位置
       end = 1 + (int) (currentTicks & mask);
     }
 
     int mask = timerWheel.length - 1;
     for (int i = start; i < end; i++) {
-      Node<K, V> sentinel = timerWheel[(i & mask)];
+      Node<K, V> sentinel = timerWheel[(i & mask)];//找到slot，以为start和end可能大于timerWheel.length
       Node<K, V> prev = sentinel.getPreviousInVariableOrder();
       Node<K, V> node = sentinel.getNextInVariableOrder();
       sentinel.setPreviousInVariableOrder(sentinel);
       sentinel.setNextInVariableOrder(sentinel);
 
+      //找到slot的列表头，并遍历整个列表
       while (node != sentinel) {
+        //将节点取出来，并从链表中移除
         Node<K, V> next = node.getNextInVariableOrder();
         node.setPreviousInVariableOrder(null);
         node.setNextInVariableOrder(null);
 
         try {
+          //处理回收所有时间到了Node
           if (((node.getVariableTime() - nanos) > 0)
               || !cache.evictEntry(node, RemovalCause.EXPIRED, nanos)) {
+            //没有达到回收时间的，重新加入timerWheel计算slot(此时nanos已经更新为最新时间)
             schedule(node);
           }
           node = next;
@@ -202,12 +209,12 @@ final class TimerWheel<K, V> {
    * @return the sentinel at the head of the bucket
    */
   Node<K, V> findBucket(long time) {
-    long duration = time - nanos;
+    long duration = time - nanos; //时间差
     int length = wheel.length - 1;
     for (int i = 0; i < length; i++) {
-      if (duration < SPANS[i + 1]) {
-        long ticks = (time >>> SHIFT[i]);
-        int index = (int) (ticks & (wheel[i].length - 1));
+      if (duration < SPANS[i + 1]) { //找到属于哪个Wheel层，小于上一层的单个slot大小。 SPANS[i+1]上一层单个槽位大小
+        long ticks = (time >>> SHIFT[i]); //直接除以槽位值，得到需要个槽位，SHIFT[i]改层每个槽位大小的掩码
+        int index = (int) (ticks & (wheel[i].length - 1)); //取模得到具体的槽位，wheel[i].length第层有几个槽位
         return wheel[i][index];
       }
     }
